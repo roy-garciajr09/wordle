@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Valentine's Wordle</title>
+    <title> Wordle</title>
     
     <!-- Libraries -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -378,7 +378,7 @@
             
             <header className="py-4 border-b border-white/10 relative z-10 bg-black/20 backdrop-blur-sm">
               <h1 className="text-center text-3xl font-script text-valentine-pink drop-shadow-[0_0_10px_rgba(255,77,109,0.5)]">
-                Valentine's Wordle
+                Wordle
               </h1>
             </header>
 
@@ -400,7 +400,7 @@
                       <div className="flex flex-col gap-3">
                         <button onClick={startNewGame} className="w-full py-3 rounded-lg bg-slate-700 hover:bg-slate-600 transition font-bold">Play Again</button>
                         <button onClick={() => setPhase('proposal')} className="w-full py-3 rounded-lg bg-gradient-to-r from-valentine-red to-valentine-purple hover:opacity-90 transition font-bold shadow-[0_0_15px_rgba(255,77,109,0.5)] animate-pulse">
-                          {gameStatus === 'won' ? "Click for a Surprise 🎁" : "Give Up? (Reveal Surprise)"}
+                          {gameStatus === 'won' ? "Click for a Surprise 🎁" : "Give Up? "}
                         </button>
                       </div>
                     </div>
