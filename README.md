@@ -1,0 +1,2 @@
+# wordle
+for fun only!
