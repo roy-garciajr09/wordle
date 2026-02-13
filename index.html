@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Valentine's Wordle</title>
+    
+    <!-- Libraries -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&family=Pacifico&display=swap" rel="stylesheet">
+
+    <!-- Tailwind Config -->
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              valentine: {
+                dark: '#2d0a15',
+                red: '#ff4d6d',
+                pink: '#ff8fa3',
+                cream: '#fff0f3',
+                purple: '#590d22',
+                correct: '#6aaa64',
+                present: '#c9b458',
+                absent: '#787c7e',
+              }
+            },
+            fontFamily: {
+              sans: ['Fredoka', 'sans-serif'],
+              script: ['Pacifico', 'cursive'],
+            },
+            animation: {
+              'float': 'float 6s ease-in-out infinite',
+              'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            },
+            keyframes: {
+              float: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-20px)' },
+              }
+            }
+          }
+        }
+      }
+    </script>
+
+    <!-- Custom CSS for 3D Flip and Shake -->
+    <style>
+      body {
+        background-color: #2d0a15;
+        color: white;
+        overflow: hidden;
+        touch-action: manipulation;
+      }
+      
+      /* 3D Flip Animation */
+      .perspective-1000 { perspective: 1000px; }
+      .transform-style-3d { transform-style: preserve-3d; }
+      .backface-hidden { backface-visibility: hidden; }
+      .rotate-y-180 { transform: rotateY(180deg); }
+      
+      .tile-inner {
+        transition: transform 0.6s;
+        transform-style: preserve-3d;
+      }
+      .tile-inner.flipped {
+        transform: rotateX(180deg);
+      }
+      .tile-front, .tile-back {
+        backface-visibility: hidden;
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+      }
+      .tile-back {
+        transform: rotateX(180deg);
+      }
+
+      /* Shake Animation */
+      .shake {
+        animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+      }
+      @keyframes shake {
+        10%, 90% { transform: translate3d(-1px, 0, 0); }
+        20%, 80% { transform: translate3d(2px, 0, 0); }
+        30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+        40%, 60% { transform: translate3d(4px, 0, 0); }
+      }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useState, useEffect, useMemo } = React;
+
+      // --- CONSTANTS ---
+      const WORD_LENGTH = 5;
+      const MAX_CHALLENGES = 6;
+      const TARGET_WORDS = ["HEART", "LOVER", "CUPID", "ADORE", "AMOUR", "SWEET", "CRUSH", "HONEY"];
+      const KEYBOARD_KEYS = [
+        ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+        ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
+        ["ENTER", "Z", "X", "C", "V", "B", "N", "M", "BACKSPACE"]
+      ];
+
+      // --- COMPONENTS ---
+
+      // 1. Floating Hearts Background
+      const FloatingHearts = () => {
+        const [hearts, setHearts] = useState([]);
+        useEffect(() => {
+          setHearts(Array.from({ length: 20 }).map((_, i) => ({
+            id: i,
+            left: Math.random() * 100,
+            duration: 5 + Math.random() * 10,
+            delay: Math.random() * 5,
+            size: 10 + Math.random() * 20,
+          })));
+        }, []);
+
+        return (
+          <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+            {hearts.map((heart) => (
+              <div
+                key={heart.id}
+                className="absolute bottom-[-50px] text-valentine-pink opacity-20 animate-float"
+                style={{
+                  left: `${heart.left}%`,
+                  fontSize: `${heart.size}px`,
+                  animationDuration: `${heart.duration}s`,
+                  animationDelay: `${heart.delay}s`,
+                }}
+              >
+                ❤️
+              </div>
+            ))}
+          </div>
+        );
+      };
+
+      // 2. Keyboard Key
+      const Key = ({ value, state, onClick }) => {
+        const isSpecial = value.length > 1;
+        const baseClass = "h-14 font-bold rounded mx-0.5 text-sm transition-all active:scale-95 flex items-center justify-center select-none cursor-pointer";
+        const widthClass = isSpecial ? "px-2 sm:px-4 text-xs" : "flex-1";
+        
+        let colorClass = "bg-slate-700 text-white hover:bg-slate-600";
+        if (state === 'correct') colorClass = "bg-green-600 text-white";
+        else if (state === 'present') colorClass = "bg-yellow-500 text-white";
+        else if (state === 'absent') colorClass = "bg-slate-800 text-slate-400 opacity-50";
+
+        const content = value === "BACKSPACE" ? (
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414a2 2 0 001.414.586H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z" />
+          </svg>
+        ) : value;
+
+        return (
+          <button onClick={() => onClick(value)} className={`${baseClass} ${widthClass} ${colorClass}`} style={{maxWidth: isSpecial ? 'auto' : '45px', minWidth: isSpecial ? 'auto' : '30px'}}>
+            {content}
+          </button>
+        );
+      };
+
+      // 3. Virtual Keyboard
+      const Keyboard = ({ onChar, onDelete, onEnter, keyStates }) => {
+        const handleOnClick = (value) => {
+          if (value === "ENTER") onEnter();
+          else if (value === "BACKSPACE") onDelete();
+          else onChar(value);
+        };
+
+        return (
+          <div className="w-full max-w-lg mx-auto p-2 pb-8">
+            {KEYBOARD_KEYS.map((row, i) => (
+              <div key={i} className="flex justify-center mb-2 w-full">
+                {row.map((key) => (
+                  <Key key={key} value={key} onClick={handleOnClick} state={keyStates[key]} />
+                ))}
+              </div>
+            ))}
+          </div>
+        );
+      };
+
+      // 4. Single Tile
+      const Tile = ({ letter, state, index }) => {
+        const isCompleted = state !== 'tbd' && state !== 'empty';
+        const isFilled = letter.length > 0;
+        
+        // Dynamic delay for the flip animation
+        const style = { transitionDelay: `${index * 100}ms` };
+
+        return (
+          <div className="relative w-12 h-12 sm:w-14 sm:h-14 perspective-1000 mx-0.5 sm:mx-1">
+            <div className={`w-full h-full tile-inner ${isCompleted ? 'flipped' : ''}`} style={style}>
+              {/* Front */}
+              <div className={`tile-front border-2 rounded flex items-center justify-center text-3xl font-bold ${isFilled ? 'border-slate-500 text-white bg-slate-900' : 'border-slate-700 bg-transparent'}`}>
+                {letter}
+              </div>
+              {/* Back */}
+              <div className={`tile-back border-0 rounded flex items-center justify-center text-3xl font-bold ${
+                state === 'correct' ? 'bg-green-600' :
+                state === 'present' ? 'bg-yellow-500' :
+                state === 'absent' ? 'bg-slate-600' : ''
+              }`}>
+                {letter}
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      // 5. Grid
+      const Grid = ({ guesses, currentGuess, targetWord }) => {
+        const empties = Math.max(0, MAX_CHALLENGES - 1 - guesses.length);
+
+        return (
+          <div className="flex flex-col items-center justify-center flex-grow p-4">
+            {guesses.map((guess, i) => (
+              <div key={i} className="flex mb-2">
+                {guess.split('').map((letter, j) => {
+                  let state = 'absent';
+                  if (targetWord[j] === letter) state = 'correct';
+                  else if (targetWord.includes(letter)) state = 'present';
+                  return <Tile key={j} letter={letter} state={state} index={j} />;
+                })}
+              </div>
+            ))}
+            
+            {guesses.length < MAX_CHALLENGES && (
+              <div className="flex mb-2">
+                {Array.from({ length: WORD_LENGTH }).map((_, i) => (
+                  <Tile key={i} letter={currentGuess[i] || ''} state="tbd" index={i} />
+                ))}
+              </div>
+            )}
+
+            {Array.from({ length: empties }).map((_, i) => (
+              <div key={`empty-${i}`} className="flex mb-2">
+                {Array.from({ length: WORD_LENGTH }).map((_, j) => (
+                  <Tile key={j} letter="" state="empty" index={j} />
+                ))}
+              </div>
+            ))}
+          </div>
+        );
+      };
+
+      // 6. Proposal Phase
+      const Proposal = ({ onSuccess }) => {
+        const [text, setText] = useState("");
+        const fullText = "Will You Be My Valentine?";
+        const [answer, setAnswer] = useState("");
+        const [isShaking, setIsShaking] = useState(false);
+
+        useEffect(() => {
+          let i = 0;
+          const interval = setInterval(() => {
+            setText(fullText.slice(0, i + 1));
+            i++;
+            if (i > fullText.length) clearInterval(interval);
+          }, 100);
+          return () => clearInterval(interval);
+        }, []);
+
+        const handleChar = (char) => { if (answer.length < 3) setAnswer(prev => prev + char); };
+        const handleDelete = () => setAnswer(prev => prev.slice(0, -1));
+        const handleEnter = () => {
+          if (answer === "YES") {
+            confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#ff4d6d', '#ff8fa3', '#ffffff'] });
+            onSuccess();
+          } else {
+            setIsShaking(true);
+            setTimeout(() => { setIsShaking(false); setAnswer(""); }, 500);
+          }
+        };
+
+        return (
+          <div className="flex flex-col items-center justify-between h-full w-full py-8 relative z-10">
+            <div className="flex-grow flex flex-col items-center justify-center space-y-8">
+              <h1 className="text-3xl sm:text-4xl font-script text-valentine-pink min-h-[80px] text-center px-4 drop-shadow-lg">{text}</h1>
+              <div className="flex flex-col items-center space-y-4">
+                <p className="text-valentine-cream opacity-80 animate-pulse">Type your answer...</p>
+                <div className={`flex space-x-2 ${isShaking ? 'shake' : ''}`}>
+                  {[0, 1, 2].map((i) => (
+                    <div key={i} className={`w-14 h-14 sm:w-16 sm:h-16 border-2 rounded-lg flex items-center justify-center text-3xl font-bold transition-colors shadow-lg ${answer[i] ? "bg-valentine-red border-valentine-red text-white" : "border-valentine-pink bg-black/30 text-white"}`}>
+                      {answer[i] || ""}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="w-full">
+              <Keyboard onChar={handleChar} onDelete={handleDelete} onEnter={handleEnter} keyStates={{}} />
+            </div>
+          </div>
+        );
+      };
+
+      // --- MAIN APP ---
+      const App = () => {
+        const [phase, setPhase] = useState('game'); // game, choice, proposal, celebration
+        const [guesses, setGuesses] = useState([]);
+        const [currentGuess, setCurrentGuess] = useState("");
+        const [targetWord, setTargetWord] = useState("");
+        const [gameStatus, setGameStatus] = useState('playing'); // playing, won, lost
+
+        useEffect(() => {
+          startNewGame();
+        }, []);
+
+        const startNewGame = () => {
+          const randomWord = TARGET_WORDS[Math.floor(Math.random() * TARGET_WORDS.length)];
+          setTargetWord(randomWord);
+          setGuesses([]);
+          setCurrentGuess("");
+          setGameStatus('playing');
+          setPhase('game');
+        };
+
+        const handleChar = (char) => {
+          if (phase !== 'game' || gameStatus !== 'playing') return;
+          if (currentGuess.length < WORD_LENGTH) setCurrentGuess(prev => prev + char);
+        };
+
+        const handleDelete = () => {
+          if (phase !== 'game' || gameStatus !== 'playing') return;
+          setCurrentGuess(prev => prev.slice(0, -1));
+        };
+
+        const handleEnter = () => {
+          if (phase !== 'game' || gameStatus !== 'playing') return;
+          if (currentGuess.length !== WORD_LENGTH) return;
+
+          const newGuesses = [...guesses, currentGuess];
+          setGuesses(newGuesses);
+          setCurrentGuess("");
+
+          if (currentGuess === targetWord) {
+            setGameStatus('won');
+            setPhase('choice');
+            confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+          } else if (newGuesses.length >= MAX_CHALLENGES) {
+            setGameStatus('lost');
+            setPhase('choice');
+          }
+        };
+
+        const getKeyStates = () => {
+          const keyStates = {};
+          guesses.forEach(guess => {
+            guess.split('').forEach((letter, i) => {
+              if (targetWord[i] === letter) keyStates[letter] = 'correct';
+              else if (targetWord.includes(letter)) {
+                if (keyStates[letter] !== 'correct') keyStates[letter] = 'present';
+              } else {
+                if (keyStates[letter] !== 'correct' && keyStates[letter] !== 'present') keyStates[letter] = 'absent';
+              }
+            });
+          });
+          return keyStates;
+        };
+
+        return (
+          <div className="relative min-h-screen bg-gradient-to-b from-slate-900 via-valentine-dark to-slate-900 text-white font-sans flex flex-col overflow-hidden">
+            <FloatingHearts />
+            
+            <header className="py-4 border-b border-white/10 relative z-10 bg-black/20 backdrop-blur-sm">
+              <h1 className="text-center text-3xl font-script text-valentine-pink drop-shadow-[0_0_10px_rgba(255,77,109,0.5)]">
+                Valentine's Wordle
+              </h1>
+            </header>
+
+            <main className="flex-grow flex flex-col relative z-10 max-w-lg mx-auto w-full h-full">
+              {phase === 'game' && (
+                <div className="flex flex-col h-full">
+                  <Grid guesses={guesses} currentGuess={currentGuess} targetWord={targetWord} />
+                  <Keyboard onChar={handleChar} onDelete={handleDelete} onEnter={handleEnter} keyStates={getKeyStates()} />
+                </div>
+              )}
+
+              {phase === 'choice' && (
+                <div className="flex-grow relative">
+                  <Grid guesses={guesses} currentGuess={""} targetWord={targetWord} />
+                  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <div className="bg-slate-800 p-8 rounded-2xl border-2 border-valentine-pink shadow-2xl text-center max-w-sm w-full animate-float">
+                      <h2 className="text-2xl font-bold mb-2">{gameStatus === 'won' ? "Impressive! 💖" : "Nice Try! 🥺"}</h2>
+                      <p className="mb-6 text-slate-300">{gameStatus === 'won' ? "You know the way to my heart." : `The word was ${targetWord}.`}</p>
+                      <div className="flex flex-col gap-3">
+                        <button onClick={startNewGame} className="w-full py-3 rounded-lg bg-slate-700 hover:bg-slate-600 transition font-bold">Play Again</button>
+                        <button onClick={() => setPhase('proposal')} className="w-full py-3 rounded-lg bg-gradient-to-r from-valentine-red to-valentine-purple hover:opacity-90 transition font-bold shadow-[0_0_15px_rgba(255,77,109,0.5)] animate-pulse">
+                          {gameStatus === 'won' ? "Click for a Surprise 🎁" : "Give Up? (Reveal Surprise)"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {phase === 'proposal' && (
+                <Proposal onSuccess={() => setPhase('celebration')} />
+              )}
+
+              {phase === 'celebration' && (
+                <div className="flex-grow flex flex-col items-center justify-center p-8 text-center animate-pulse-fast">
+                   <h1 className="text-5xl md:text-7xl font-script text-valentine-red mb-8 drop-shadow-[0_0_25px_rgba(255,77,109,0.8)]">
+                       Yay! I Love You! ❤️
+                   </h1>
+                   <p className="text-xl md:text-2xl text-valentine-cream max-w-md mx-auto leading-relaxed">
+                       You've made me the happiest person in the world. 
+                       <br/>
+                       Happy Valentine's Day!
+                   </p>
+                   <div className="mt-12 text-6xl animate-bounce">
+                       🥰 💏 💌
+                   </div>
+                </div>
+              )}
+            </main>
+          </div>
+        );
+      };
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+</body>
+</html>
